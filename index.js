@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient, ObjectId, ConnectionPoolClosedEvent } = require('mongodb');
+const jwt = require("jsonwebtoken")
 require('dotenv').config();
 
 const app = express();
@@ -12,6 +13,22 @@ app.use(express.json());
 // const uri = 'mongodb://0.0.0.0:27017';
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.lrzk4et.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri)
+
+const verifyJwt = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).send({ message: "Unauthorized Access" })
+    }
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECURE, (err, decoded) => {
+        if (err) {
+            return res.status(403).send({ message: "Unauthorized Access" })
+        }
+        req.decoded = decoded;
+        next();
+    })
+}
+
 // console.log(uri)
 
 async function connectDb() {
@@ -29,6 +46,7 @@ connectDb();
 //endpoints
 const Services = client.db("car-doc").collection("services")
 const Orders = client.db("car-doc").collection("orders")
+
 
 app.post("/services", async (req, res) => {
     try {
@@ -75,7 +93,7 @@ app.get('/services/:id', async (req, res) => {
 })
 
 //to set the orders 
-app.post('/orders', async (req, res) => {
+app.post('/orders', verifyJwt, async (req, res) => {
     try {
         const result = await Orders.insertOne(req.body)
         res.send({
@@ -91,8 +109,12 @@ app.post('/orders', async (req, res) => {
 })
 
 //get orders data 
-app.get('/orders', async (req, res) => {
+app.get('/orders', verifyJwt, async (req, res) => {
     try {
+        if (req.decoded.user !== req.query.email) {
+            return res.status(403).send({ message: "Forbidden access" })
+        }
+
         let query = {};
         if (req.query.email) {
             query = {
@@ -114,7 +136,7 @@ app.get('/orders', async (req, res) => {
 })
 
 
-app.delete('/orders/:id', async (req, res) => {
+app.delete('/orders/:id', verifyJwt, async (req, res) => {
     try {
         const { id } = req.params;
         const result = await Orders.deleteOne({ _id: ObjectId(id) });
@@ -141,7 +163,7 @@ app.delete('/orders/:id', async (req, res) => {
 //     const result = await Orders.deleteMany({})
 //     res.send(result)
 // })
-app.patch('/orders/:id', async (req, res) => {
+app.patch('/orders/:id', verifyJwt, async (req, res) => {
     try {
         const { id } = req.params;
         const result = await Orders.updateOne({ _id: ObjectId(id) }, { $set: req.body })
@@ -158,6 +180,16 @@ app.patch('/orders/:id', async (req, res) => {
         })
     }
 })
+
+//create jwt token 
+app.post("/jwt", (req, res) => {
+    const user = req.body;
+    const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECURE, { expiresIn: '1h' });
+    res.send({
+        token: token
+    })
+})
+
 app.get('/', (req, res) => {
     console.log('car-doctor-server is running')
 })
