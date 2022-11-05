@@ -191,7 +191,7 @@ app.post("/jwt", (req, res) => {
 })
 
 app.get('/', (req, res) => {
-    console.log('car-doctor-server is running')
+    res.send('car-doctor-server is running')
 })
 
 app.listen(port, () => {
